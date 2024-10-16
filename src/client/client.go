@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+  "github.com/AmanuelCh/linkpreview"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
+  "mvdan.cc/xurls/v2"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -566,6 +568,27 @@ func (s *SignalClient) send(signalCliSendRequest ds.SignalCliSendRequest) (*Send
 		if signalCliSendRequest.NotifySelf == nil || *signalCliSendRequest.NotifySelf {
 			cmd = append(cmd, "--notify-self")
 		}
+
+    // enable link previews
+    rxRelaxed := xurls.Relaxed()
+    url:=rxRelaxed.FindString(signalCliSendRequest.Message)
+    if "" != url {
+      lp := linkpreview.NewLinkPreviewer("signal-cli-api/1.0")
+      title, description, image, err := lp.GetLinkPreview(url)
+      if err != nil {
+        // Handle error
+      }
+		  cmd = append(cmd, "--preview-url")
+		  cmd = append(cmd, url)
+		  cmd = append(cmd, "--preview-title")
+		  cmd = append(cmd, fmt.Sprintf("'%s'", title))
+		  cmd = append(cmd, "--preview-description")
+		  cmd = append(cmd, fmt.Sprintf("'%s'", description))
+		  cmd = append(cmd, "--preview-image")
+		  cmd = append(cmd, image)
+    }
+
+    log.Warn("Cmd: ", cmd)
 
 		rawData, err := s.cliClient.Execute(true, cmd, signalCliSendRequest.Message)
 		if err != nil {
