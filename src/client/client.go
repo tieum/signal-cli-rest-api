@@ -4,9 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
+        "fmt"
+	"github.com/AmanuelCh/linkpreview"
+        "github.com/imroc/req/v3"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
+        "mvdan.cc/xurls/v2"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -29,6 +32,9 @@ const signalCliV2GroupError = "Cannot create a V2 group as self does not have a 
 const endpointNotSupportedInJsonRpcMode = "This endpoint is not supported in JSON-RPC mode."
 
 type GroupPermission int
+
+var client = req.C()
+var rxRelaxed = xurls.Relaxed()
 
 const (
 	DefaultGroupPermission GroupPermission = iota + 1
@@ -567,7 +573,30 @@ func (s *SignalClient) send(signalCliSendRequest ds.SignalCliSendRequest) (*Send
 			cmd = append(cmd, "--notify-self")
 		}
 
+		// enable link previews
+		url:=rxRelaxed.FindString(signalCliSendRequest.Message)
+		if "" != url {
+		  lp := linkpreview.NewLinkPreviewer("signal-cli-api/1.0")
+		  title, description, image, err := lp.GetLinkPreview(url)
+		    if err != nil {
+		    log.Error(err)
+		  }
+
+		  _, err = client.R().SetOutputFile("/tmp/signal.linkpreview").Get(image)
+		  if err != nil {
+		    log.Error(err)
+		  }
+		  cmd = append(cmd, "--preview-url")
+		  cmd = append(cmd, url)
+		  cmd = append(cmd, []string{"--preview-title", title}...)
+		  cmd = append(cmd, []string{"--preview-description", description}...)
+		  cmd = append(cmd, []string{"--preview-image", "/tmp/signal.linkpreview"}...)
+		}
+
+		log.Warn("Cmd: ", cmd)
+
 		rawData, err := s.cliClient.Execute(true, cmd, signalCliSendRequest.Message)
+		os.Remove("/tmp/signal.linkpreview")
 		if err != nil {
 			cleanupAttachmentEntries(attachmentEntries)
 			if strings.Contains(err.Error(), signalCliV2GroupError) {
